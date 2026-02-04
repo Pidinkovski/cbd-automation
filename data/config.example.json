@@ -1,0 +1,28 @@
+{
+  "=== INV24 (Invoices) ===": "",
+  "inv24_email": "your@email.com",
+  "inv24_password": "your-password",
+  "invoice_type": "1",
+  "default_vat": "20",
+  "default_measurement": "бр",
+
+  "=== SHOPIFY (Orders) ===": "",
+  "shopify_store": "your-store.myshopify.com",
+  "shopify_api_key": "your-api-key",
+  "shopify_api_secret": "your-api-secret",
+  "shopify_access_token": "shpat_xxxxxxxxxxxxx",
+
+  "=== ECONT (Shipping) ===": "",
+  "econt_username": "your-econt-username",
+  "econt_password": "your-econt-password",
+  "econt_sender_name": "Your Shop Name",
+  "econt_sender_phone": "0888123456",
+  "econt_sender_address": "Your pickup address",
+
+  "=== EMAIL (Notifications) ===": "",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_user": "your@gmail.com",
+  "smtp_pass": "your-app-password",
+  "email_from": "Your Shop <your@gmail.com>"
+}
