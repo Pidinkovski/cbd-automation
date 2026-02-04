@@ -14,20 +14,25 @@ Human-in-the-loop order processing for CBD e-commerce.
 3. **This is someone's business** - be careful!
 4. **Invoice MUST be done before email** (email contains the invoice)
 
-## 📦 Order Queue
+## 🔧 Tech Stack
 
-Orders can stack up. Process them **one by one in order**.
+- **Shopify** - Orders & tracking (REST API)
+- **Econt** - Waybills (REST API)
+- **INV24** - Invoices (Playwright browser automation)
+- **Email** - Customer notifications
+
+## 📦 Order Queue
 
 Track queue in `data/queue.json`:
 ```json
 {
-  "queue": ["order_123", "order_456", "order_789"],
+  "queue": ["order_123", "order_456"],
   "current": "order_123",
   "position": 1
 }
 ```
 
-When showing orders, display: `📦 Order 1/3: #1234`
+When showing orders: `📦 Order 1/3: #1234`
 
 ## 🔄 Workflow (For Each Order)
 
@@ -55,21 +60,23 @@ When showing orders, display: `📦 Order 1/3: #1234`
 └─────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────┐
-│  4. CREATE INVOICE (INV24)              │
+│  4. CREATE INVOICE (INV24 Playwright)   │
 │     [Continue] [Skip] [Cancel]          │
 │                                         │
-│     → Trigger INV24 bot/skill           │
-│     → Wait for invoice number           │
+│     node scripts/create-invoice.js      │
+│          --order-file data/order.json   │
+│                                         │
+│     ⚠️ Uses browser automation!         │
 └─────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────┐
-│  5. SEND EMAIL (with invoice)           │
+│  5. SEND INVOICE EMAIL                  │
 │     [Continue] [Skip] [Cancel]          │
 │                                         │
-│     bash scripts/send-email.sh          │
-│          --order-id ORDER_ID            │
+│     node scripts/send-invoice.js        │
+│          --invoice-id ID                │
 │                                         │
-│     ⚠️ Requires invoice to be done!     │
+│     Or: bash scripts/send-email.sh      │
 └─────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────┐
@@ -79,113 +86,94 @@ When showing orders, display: `📦 Order 1/3: #1234`
 └─────────────────────────────────────────┘
 ```
 
+## 📄 INV24 Invoice Creation
+
+### Playwright Script
+```bash
+# Create invoice from order data
+node scripts/create-invoice.js --order-json '{
+  "client": {
+    "name": "Иван Петров",
+    "company": "Фирма ЕООД",
+    "eik": "123456789",
+    "address": "ул. Витоша 15, София",
+    "email": "ivan@email.com"
+  },
+  "items": [
+    {"name": "CBD масло 10%", "price": 45, "quantity": 2},
+    {"name": "CBD крем", "price": 35, "quantity": 1}
+  ]
+}'
+
+# Or from file
+node scripts/create-invoice.js --order-file data/current-order.json
+
+# With email send
+node scripts/create-invoice.js --order-file data/order.json --send
+```
+
+### Invoice Types
+| Value | Type |
+|-------|------|
+| 0 | Фактура (Invoice) |
+| 1 | Проформа фактура (Proforma) |
+| 2 | Ценова оферта (Quote) |
+| 3 | Кредитно известие (Credit note) |
+| 4 | Дебитно известие (Debit note) |
+
+### Send Existing Invoice
+```bash
+node scripts/send-invoice.js --invoice-id 1119419
+# or
+node scripts/send-invoice.js --invoice-number 100000000023
+```
+
 ## 🔘 Button Actions
 
 | Button | Action |
 |--------|--------|
 | **Continue** | Execute step, proceed to next |
 | **Skip** | Mark step as skipped, proceed to next |
-| **Cancel** | Stop workflow, show: [Retry] [Skip to next order] |
+| **Cancel** | Stop workflow, show retry options |
 
 ### On Cancel:
-
-Show these options:
 ```
 ❌ Workflow cancelled for Order #1234
 
-[🔄 Retry] - Start workflow again for this order
-[⏭️ Skip to next order] - Mark as "waiting", process next
+[🔄 Retry] - Start workflow again
+[⏭️ Skip order] - Mark as waiting, process next
 ```
-
-- **Retry**: Reset order to step 1, start workflow again
-- **Skip to next order**: 
-  - Set order status = "waiting"
-  - Remove from queue front
-  - Add to end of queue (or separate waiting list)
-  - Start processing next order
 
 ## 📝 Manual Order (`/manualOrder`)
 
-When user says `/manualOrder` or `manual order`:
-
 ### Step 1: Collect Info
 ```
-Bot: 📝 New manual order. Let's collect the info.
+📝 New manual order. Let's collect the info.
 
-     Customer name?
-User: Иван Петров
-
-Bot: Phone number?
-User: 0888123456
-
-Bot: City?
-User: София
-
-Bot: Address?
-User: ул. Витоша 15
-
-Bot: Postal code?
-User: 1000
-
-Bot: Email? (optional, press Skip if none)
-User: ivan@email.com
+Customer name? → Phone? → City? → Address? → Postal code? → Email?
 ```
 
 ### Step 2: Collect Products (loop)
 ```
-Bot: Product name?
-User: CBD масло 10%
+Product name? → Price? → Quantity?
+✅ Added: 2x CBD масло 10% @ 45 = 90 BGN
 
-Bot: Price per unit (BGN)?
-User: 45
-
-Bot: Quantity?
-User: 2
-
-Bot: ✅ Added: 2x CBD масло 10% @ 45 = 90 BGN
-
-     Add another product?
-     [➕ Add product] [✅ Done]
-
-User: [Add product]
-... repeat ...
-
-User: [Done]
+[➕ Add product] [✅ Done]
 ```
 
-### Step 3: Confirm & Create in Shopify
+### Step 3: Confirm & Create
 ```
-Bot: 📦 Order Summary:
+📦 Order Summary:
 
-     👤 Иван Петров
-     📱 0888123456
-     📧 ivan@email.com
-     📍 ул. Витоша 15, 1000 София
+👤 Иван Петров | 📱 0888123456
+📍 ул. Витоша 15, 1000 София
 
-     🛒 Items:
-        • 2x CBD масло 10% @ 45 = 90 BGN
-        • 1x CBD крем @ 35 = 35 BGN
-     ─────────────────────────────
-     💰 Total: 125 BGN (COD)
+🛒 Items:
+   • 2x CBD масло 10% @ 45 = 90 BGN
+💰 Total: 90 BGN (COD)
 
-     Create order in Shopify?
-     [✅ Create] [✏️ Edit] [❌ Cancel]
+[✅ Create] [✏️ Edit] [❌ Cancel]
 ```
-
-On Create:
-```bash
-bash scripts/create-shopify-order.sh \
-    --name "Иван Петров" \
-    --phone "0888123456" \
-    --email "ivan@email.com" \
-    --city "София" \
-    --address "ул. Витоша 15" \
-    --postal "1000" \
-    --items '[{"name":"CBD масло 10%","qty":2,"price":45},{"name":"CBD крем","qty":1,"price":35}]' \
-    --payment "cod"
-```
-
-After creation → Order enters queue → Workflow starts automatically.
 
 ## 📊 Commands
 
@@ -196,7 +184,7 @@ After creation → Order enters queue → Workflow starts automatically.
 | `pending orders` | Show queue + waiting orders |
 | `order status <ID>` | Show specific order details |
 | `retry order <ID>` | Restart workflow for order |
-| `skip order <ID>` | Mark order as waiting, skip |
+| `skip order <ID>` | Mark as waiting, skip |
 | `next order` | Process next in queue |
 | `setup cbd` | Run configuration setup |
 
@@ -206,58 +194,45 @@ After creation → Order enters queue → Workflow starts automatically.
 |--------|---------|
 | `setup.sh` | Interactive configuration |
 | `shopify-orders.sh` | Fetch new orders from Shopify |
-| `create-shopify-order.sh` | Create manual order IN Shopify |
-| `create-shipment.sh` | Create Econt waybill (API) |
-| `update-shopify-tracking.sh` | Add tracking to Shopify order |
-| `send-email.sh` | Send invoice email to customer |
-| `update-order.sh` | Update order status/fields |
+| `create-shopify-order.sh` | Create manual order in Shopify |
+| `create-shipment.sh` | Create Econt waybill |
+| `update-shopify-tracking.sh` | Add tracking to Shopify |
+| **`create-invoice.js`** | **Create INV24 invoice (Playwright)** |
+| **`send-invoice.js`** | **Send invoice via INV24 (Playwright)** |
+| `send-email.sh` | Send notification email |
+| `update-order.sh` | Update order status |
 | `status.sh` | Check order/queue status |
 | `test.sh` | Test service connections |
-
-## 📄 Order Status Values
-
-| Status | Meaning |
-|--------|---------|
-| `new` | Just received, not started |
-| `processing` | Currently in workflow |
-| `waiting` | Cancelled/skipped, waiting to retry |
-| `processed` | ✅ All steps completed |
 
 ## 🗃️ Data Files
 
 | File | Purpose |
 |------|---------|
-| `data/config.json` | Credentials (encrypted) |
-| `data/orders.json` | All orders + their states |
+| `data/config.json` | Credentials (⚠️ gitignored) |
+| `data/orders.json` | All orders + states |
 | `data/queue.json` | Current processing queue |
 | `data/audit.log` | Action history |
 
-## 🔌 INV24 Integration
+## ⚙️ Configuration
 
-INV24 invoice creation is handled by another bot/skill.
-
-When step 4 (invoice) is reached:
-1. Prepare invoice data (customer, items, total)
-2. Trigger INV24 bot with the data
-3. Wait for response with invoice number/PDF
-4. Update order with invoice info
-5. Proceed to email step
-
-**Data to send to INV24 bot:**
+### INV24 Setup
+Credentials stored in `data/config.json`:
 ```json
 {
-  "orderId": "order_123",
-  "customer": {
-    "name": "Иван Петров",
-    "city": "София",
-    "address": "ул. Витоша 15"
-  },
-  "items": [
-    {"name": "CBD масло", "qty": 2, "price": 45}
-  ],
-  "total": 90,
-  "payment": "cod"
+  "inv24_email": "your@email.com",
+  "inv24_password": "yourpassword",
+  "invoice_type": "1",
+  "default_vat": "20",
+  "default_measurement": "бр"
 }
+```
+
+### Dependencies
+```bash
+cd skills/cbd-automation
+npm install playwright
+npx playwright install chromium
+npx playwright install-deps chromium
 ```
 
 ## ⚠️ Safety Rules
@@ -267,3 +242,4 @@ When step 4 (invoice) is reached:
 3. **ALWAYS** log every action to audit.log
 4. **ALWAYS** show what you're about to do
 5. If email step reached but invoice not done → STOP and inform user
+6. INV24 uses browser automation - may take 10-30 seconds per invoice
