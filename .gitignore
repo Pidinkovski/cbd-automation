@@ -1,0 +1,11 @@
+# Sensitive data - NEVER commit these
+data/config.json
+data/orders.json
+data/audit.log
+
+# Keep the data directory structure
+!data/.gitkeep
+
+# Temp files
+*.tmp
+*.log
